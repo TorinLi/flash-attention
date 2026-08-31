@@ -583,8 +583,6 @@ def _flash_attn_fwd(
         aux_tensors: Some score_mods will want to read from global aux_tensors. This is how we thread them through to the inner kernel.
         aux_scalars: Runtime scalar captures used by score_mod or mask_mod.
     """
-    max_seqlen_q = _normalize_max_seqlen(max_seqlen_q)
-    max_seqlen_k = _normalize_max_seqlen(max_seqlen_k)
     aux_scalars = tuple(aux_scalars) if aux_scalars else None
     requires_grad = any(
         t is not None and t.requires_grad for t in (q, k, v, qv, learnable_sink)
@@ -793,6 +791,11 @@ def _flash_attn_fwd(
         max_seqlen_k = seqlen_k
     if cu_seqlens_k is None and seqused_k is None:
         min_seqlen_k = seqlen_k
+
+    # SM100/SM110 pass max_seqlen_q as a typed kernel argument.  On other
+    # architectures, preserve a tensor value to avoid an unnecessary host sync.
+    if arch // 10 in [10, 11]:
+        max_seqlen_q = _normalize_max_seqlen(max_seqlen_q)
 
     fwd_cfg = _get_fwd_config(
         arch=arch,
